@@ -1,0 +1,97 @@
+#include <stm32f767xx.h>
+
+// LED Pin Definitions
+#define GREEN_CH1_PC6 6
+#define RED_CH2_PC7 7
+#define BLUE_CH3_PC8 8
+#define AF2_GPIO 2
+
+// LED Control Macros
+#define ALL_LEDS_OFF() ((1U << GREEN_CH1_PC6) | (1U << RED_CH2_PC7) | (1U << BLUE_CH3_PC8))
+#define GREEN_ON() (1U << GREEN_CH1_PC6)
+#define RED_ON() (1U << RED_CH2_PC7)
+#define BLUE_ON() (1U << BLUE_CH3_PC8)
+
+// Prototype Declarations
+void TIM3_Init(void);
+void GPIO_Init(void);
+void Error_Handler(void);
+void SetRGB(uint16_t red, uint16_t green, uint16_t blue);
+
+// MAIN
+int main(void)
+{
+    GPIO_Init();
+    TIM3_Init();
+
+    while(1){
+        SetRGB(1000, 0, 0); // Red
+        for(volatile int i=0; i<1000000; i++);
+        SetRGB(0, 1000, 0); // Green
+        for(volatile int i=0; i<1000000; i++);
+        SetRGB(0, 0, 1000); // Blue
+        for(volatile int i=0; i<1000000; i++);
+    }
+}
+void GPIO_init();
+void GPIO_init(void)
+{
+// GPIO clock
+RCC->AHB1ENR |= RCC_AHB1ENR_GPIOCEN;
+
+// PC6/7/8 as AF2
+GPIOC->MODER   &= ~((3<<(GREEN_CH1_PC6*2))|(3<<(RED_CH2_PC7*2))|(3<<(BLUE_CH3_PC8*2)));
+GPIOC->MODER   |=  ((2<<(GREEN_CH1_PC6*2))|(2<<(RED_CH2_PC7*2))|(2<<(BLUE_CH3_PC8*2))); // AF
+GPIOC->AFR[0]  &= ~((0xF<<(GREEN_CH1_PC6*4))|(0xF<<(RED_CH2_PC7*4)));
+GPIOC->AFR[0]  |=  ((AF2_GPIO<<(GREEN_CH1_PC6*4))|(AF2_GPIO<<(RED_CH2_PC7*4)));           // PC6,7 AF2
+GPIOC->AFR[1]  &= ~(0xF<<((BLUE_CH3_PC8-8)*4)); 
+GPIOC->AFR[1]  |=  (AF2_GPIO<<((BLUE_CH3_PC8-8)*4));                        // PC8 AF2
+GPIOC->OTYPER  &= ~((1<<GREEN_CH1_PC6)|(1<<RED_CH2_PC7)|(1<<BLUE_CH3_PC8));            // Push-pull
+GPIOC->OSPEEDR |=  ((3<<(GREEN_CH1_PC6*2))|(3<<(RED_CH2_PC7*2))|(3<<(BLUE_CH3_PC8*2)));// Very High
+GPIOC->PUPDR   &= ~((3<<(GREEN_CH1_PC6*2))|(3<<(RED_CH2_PC7*2))|(3<<(BLUE_CH3_PC8*2)));// No pull
+
+}
+
+void TIM3_Init(void)
+{
+// Timer clock
+RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+
+// TIM3 base
+TIM3->PSC  = 95;      // 96 MHz / (95+1) = 1 MHz
+TIM3->ARR  = 999;     // 1 MHz / (999+1) = 1 kHz
+TIM3->CR1 |= TIM_CR1_ARPE;
+
+// Channels: PWM1 mode
+TIM3->CCMR1 = (6<<TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE |
+              (6<<TIM_CCMR1_OC2M_Pos) | TIM_CCMR1_OC2PE;
+TIM3->CCMR2 = (6<<TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE;
+
+// Start values (off)
+TIM3->CCR1 = 0;   // Green
+TIM3->CCR2 = 0;   // Red
+TIM3->CCR3 = 0;   // Blue
+
+// Enable outputs
+TIM3->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+
+// Latch and start
+TIM3->EGR  = TIM_EGR_UG;
+TIM3->CR1 |= TIM_CR1_CEN;
+}
+void Error_Handler(void)
+{
+    while(1);
+}
+void SetRGB(uint16_t red, uint16_t green, uint16_t blue)
+{
+    if(red > 1000) red = 1000;
+    if(green > 1000) green = 1000;
+    if(blue > 1000) blue = 1000;
+
+    TIM3->CCR1 = green; // Green
+    TIM3->CCR2 = red;   // Red
+    TIM3->CCR3 = blue;  // Blue
+}
+
+void _init(void) {}
